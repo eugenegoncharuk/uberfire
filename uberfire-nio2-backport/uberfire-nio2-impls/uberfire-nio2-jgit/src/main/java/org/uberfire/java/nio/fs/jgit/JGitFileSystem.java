@@ -16,23 +16,6 @@
 
 package org.uberfire.java.nio.fs.jgit;
 
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Date;
-import java.util.HashSet;
-import java.util.Iterator;
-import java.util.List;
-import java.util.Map;
-import java.util.NoSuchElementException;
-import java.util.Queue;
-import java.util.Set;
-import java.util.TimeZone;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicInteger;
-
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.ListBranchCommand;
 import org.eclipse.jgit.lib.Ref;
@@ -44,26 +27,24 @@ import org.uberfire.java.nio.base.FileSystemId;
 import org.uberfire.java.nio.base.FileSystemState;
 import org.uberfire.java.nio.base.FileSystemStateAware;
 import org.uberfire.java.nio.base.options.CommentedOption;
-import org.uberfire.java.nio.file.ClosedWatchServiceException;
-import org.uberfire.java.nio.file.FileStore;
-import org.uberfire.java.nio.file.FileSystem;
+import org.uberfire.java.nio.file.*;
 import org.uberfire.java.nio.file.InterruptedException;
-import org.uberfire.java.nio.file.InvalidPathException;
-import org.uberfire.java.nio.file.Path;
-import org.uberfire.java.nio.file.PathMatcher;
-import org.uberfire.java.nio.file.PatternSyntaxException;
-import org.uberfire.java.nio.file.WatchEvent;
-import org.uberfire.java.nio.file.WatchKey;
-import org.uberfire.java.nio.file.WatchService;
-import org.uberfire.java.nio.file.Watchable;
 import org.uberfire.java.nio.file.attribute.UserPrincipalLookupService;
 import org.uberfire.java.nio.file.spi.FileSystemProvider;
 
-import static java.util.Arrays.*;
-import static java.util.Collections.*;
-import static org.eclipse.jgit.lib.Repository.*;
-import static org.uberfire.commons.validation.PortablePreconditions.*;
-import static org.uberfire.java.nio.fs.jgit.util.JGitUtil.*;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentLinkedQueue;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import static java.util.Arrays.asList;
+import static java.util.Collections.unmodifiableSet;
+import static org.eclipse.jgit.lib.Repository.shortenRefName;
+import static org.uberfire.commons.validation.PortablePreconditions.checkNotEmpty;
+import static org.uberfire.commons.validation.PortablePreconditions.checkNotNull;
+import static org.uberfire.java.nio.fs.jgit.util.JGitUtil.branchList;
 
 public class JGitFileSystem implements FileSystem,
                                        FileSystemId,
@@ -87,7 +68,7 @@ public class JGitFileSystem implements FileSystem,
 
     private FileSystemState state = FileSystemState.NORMAL;
     private CommitInfo batchCommitInfo = null;
-    private boolean hadCommitOnBatchState = false;
+    private Map<Path, Boolean> hadCommitOnBatchState = new ConcurrentHashMap<Path, Boolean>();
 
     private final Lock lock = new Lock();
 
@@ -507,12 +488,21 @@ public class JGitFileSystem implements FileSystem,
         this.batchCommitInfo = buildCommitInfo( defaultMessage, op );
     }
 
-    public void setHadCommitOnBatchState( boolean hadCommitOnBatchState ) {
-        this.hadCommitOnBatchState = hadCommitOnBatchState;
+    public void setHadCommitOnBatchState( final Path path,
+                                          final boolean hadCommitOnBatchState ) {
+        final Path root = checkNotNull( "path", path ).getRoot();
+        this.hadCommitOnBatchState.put( root.getRoot(), hadCommitOnBatchState );
     }
 
-    public boolean isHadCommitOnBatchState() {
-        return hadCommitOnBatchState;
+    public void setHadCommitOnBatchState( final boolean value ) {
+        for ( Map.Entry<Path, Boolean> entry : hadCommitOnBatchState.entrySet() ) {
+            entry.setValue( value );
+        }
+    }
+
+    public boolean isHadCommitOnBatchState( final Path path ) {
+        final Path root = checkNotNull( "path", path ).getRoot();
+        return hadCommitOnBatchState.containsKey( root ) ? hadCommitOnBatchState.get( root ) : false;
     }
 
     public void setBatchCommitInfo( CommitInfo batchCommitInfo ) {
